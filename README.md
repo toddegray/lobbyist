@@ -1,221 +1,354 @@
 # lobbyist
 
-**An AI teammate for the senior lobbying analyst.** Follow the money from
-the K Street office to the committee vote to the federal contract.
+> **An AI senior lobbying analyst on your laptop.**
+> Follow the money from the K Street office to the committee vote to the federal contract.
 
-Point it at a company, get the full profile. Point it at a bill, get the
-roster of every registered lobbyist working it. Point it at a member of
-Congress, cross-reference the lobbying clients on their committee's
-jurisdiction against the campaign contributions they received. Point it
-at a firm, cross-reference their lobbying spend with their federal
-contract wins.
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
+[![Bun](https://img.shields.io/badge/runtime-Bun%201.1+-black.svg)](https://bun.sh)
+[![MCP](https://img.shields.io/badge/MCP-stdio%20server-purple.svg)](https://modelcontextprotocol.io)
+[![Tests](https://img.shields.io/badge/tests-45%2F45%20passing-brightgreen.svg)](test/)
 
-MIT licensed. TypeScript on [Bun](https://bun.sh). **Runs fully local by
-default.** Built on 25+ years of public Senate LDA filings, FEC campaign
-contributions, USASpending.gov federal contract awards, and Congress.gov
-bill metadata.
+Type a company name → get a fully-cited lobbying brief in 30 seconds.
+Ask a question in English → get a cross-referenced answer across Senate
+LDA filings, FEC campaign contributions, USASpending federal contracts,
+and Congress.gov bill metadata.
 
-> **OpenSecrets killed their API in April 2025.** OpenLobby is a single
-> independent website, not a tool. Lex Machina-scale incumbents don't
-> exist here. This is the open-source toolkit we deserve.
+**OpenSecrets killed their API in April 2025.** OpenLobby is a single
+static website, not a tool. Lex Machina-scale incumbents don't exist
+here. This is the open-source toolkit we deserve.
 
----
+```
+$ lobbyist entity-profile "Pfizer Inc" --year-start=2020 --year-end=2024
+```
+```markdown
+## Pfizer Inc — Lobbying Profile
 
-> ⚠️  lobbyist reports **what filers themselves reported to the government**.
-> It cannot detect unregistered lobbying, shadow lobbying, or off-the-books
-> influence. It does not infer intent, motive, or quid-pro-quo. Every
-> output is a **draft for a human analyst to review**. Shipped AS-IS under
-> the MIT license with no warranty (see [LICENSE](LICENSE)).
+Pfizer Inc filed 20 LDA filings covering 2020–2024, with $57,520,000
+in reported lobbying spend [total_spend].
 
----
+- Activity window: 2020 → 2024 (20 active quarters).
 
-## Install
+### Spend by year
 
-```bash
-git clone https://github.com/toddegray/lobbyist
-cd lobbyist
-bun install
-bun run src/cli.ts init      # interactive; writes ~/.lobbyist/config.json
-bun run src/cli.ts ping      # sanity-check your LDA key
+| Year | Filings | Reported spend |
+| ---- | ------- | -------------- |
+| 2020 | 4       | $11,120,000 [year_2020] |
+| 2021 | 4       | $12,560,000 [year_2021] |
+| 2022 | 4       | $14,400,000 [year_2022] |
+| 2023 | 4       | $11,220,000 [year_2023] |
+| 2024 | 4       |  $8,220,000 [year_2024] |
+
+### Lobbying firms employed (top 5 by filings)
+
+- Akin Gump Strauss Hauer & Feld LLP — 20 filings
+- Invariant LLC — 19 filings
+- …
+
+### Issues lobbied (top 5 by filing count)
+
+- HCR — Health Issues (18 filings)
+- MMM — Medicare/Medicaid (14 filings)
+- TAX — Taxation (12 filings)
+- …
+
+> Filed facts only. Every figure cites a Senate LDA filing.
+> The tool cannot detect unregistered lobbying.
 ```
 
-Requires [Bun 1.1+](https://bun.sh/docs/installation). That's it — no
-Docker, no database server, no cloud account. The whole thing is one
-SQLite file at `~/.lobbyist/data/lobbyist.db`.
+*Illustrative — numbers depend on the live LDA database at fetch time. Every number in real output links to the underlying filing.*
 
-**Keys you'll need:**
+---
 
-- Senate LDA token (free, instant) from <https://lda.senate.gov/api/register/>
-- **Optional:** OpenFEC key from <https://api.open.fec.gov/developers/> —
-  unlocks `committee-influence` (LDA+FEC) and serves as the fallback for
-  Congress.gov. One api.data.gov key works for both.
-- **Optional:** Anthropic API key — unlocks the `ask` natural-language
-  orchestrator.
-
-To compile a standalone executable: `bun run build` → `./bin/lobbyist`.
-
-## Thirty seconds in
+## Install in 60 seconds
 
 ```bash
-# Profile a company — the single-call way
-bun run src/cli.ts entity-profile "Pfizer Inc"
+git clone https://github.com/toddegray/lobbyist && cd lobbyist
+bun install
+bun link                          # makes the `lobbyist` command global
+lobbyist init                     # interactive setup → ~/.lobbyist/config.json
+lobbyist ping                     # sanity-check your LDA key
+```
+
+That's it. No Docker, no database server, no cloud account. The whole
+thing is one SQLite file at `~/.lobbyist/data/lobbyist.db`.
+
+**Requires:** [Bun 1.1+](https://bun.sh/docs/installation).
+
+**You'll need:**
+
+- [ ] **Senate LDA token** — free, instant, from <https://lda.senate.gov/api/register/>. Required.
+- [ ] OpenFEC key — free, instant, from <https://api.open.fec.gov/developers/>. Optional, unlocks `committee-influence` + Congress.gov fallback.
+- [ ] Anthropic key — optional, unlocks the `ask` natural-language orchestrator.
+
+`lobbyist init` walks you through all three.
+
+---
+
+## First thirty seconds
+
+```bash
+# Full profile for any registered lobbying client
+lobbyist entity-profile "Amazon.com Services LLC"
 
 # Who's lobbying on a bill?
-bun run src/cli.ts bill-watchers --bill="Kids Online Safety Act"
+lobbyist bill-watchers --bill="CHIPS Act"
 
 # Quarter-over-quarter spend with anomaly flags
-bun run src/cli.ts spend-analysis "Amazon.com Services LLC"
+lobbyist spend-analysis "Exxon Mobil Corporation"
 
-# Revolving door — career arc of an individual lobbyist
-bun run src/cli.ts revolving-door "Heather Podesta"
-
-# LDA + FEC join — requires OpenFEC key
-bun run src/cli.ts committee-influence --member="Bernie Sanders" \
-    --issue-codes=HCR,MMM --cycle=2024
-
-# LDA + USASpending join — lobbying spend vs federal contract awards
-bun run src/cli.ts contract-trace "Lockheed Martin" --year-start=2020 --year-end=2024
-
-# Coalitions — who lobbies together?
-bun run src/cli.ts coalition-detect --bill="CHIPS Act" --year-start=2021 --year-end=2023
-
-# Diff two quarters for the same client
-bun run src/cli.ts filing-diff "Amazon.com Services LLC" --from=2020 --to=2024
-
-# Pattern scan: late filings, ex-staffer hires, issue churn
-bun run src/cli.ts anomaly-scan "Exxon Mobil Corporation"
-
-# Full composed brief (all of the above, concatenated)
-bun run src/cli.ts brief "JPMorgan Chase & Co." --with-contracts
-
-# Natural language — Claude picks the right tools
-bun run src/cli.ts ask "Which drug-pricing clients gave most to Senate Finance members in 2024?"
+# English → the right tools → a synthesized answer
+lobbyist ask "Which drug-pricing clients gave the most to Senate Finance members in 2024?"
 ```
 
-Every recipe is committed under [`examples/`](examples/).
+Every command writes a markdown brief to stdout and persists a typed JSON
+envelope to local memory. Re-running is cheap (everything's cached).
+Add `--format=json` for the raw envelope or `--write=path.md` to save.
 
-## The skills (v0.5)
+---
 
-| Skill | What it does |
-| ----- | ------------ |
-| [`entity-profile`](src/skills/entity-profile.ts) | Full profile for a client: registrations, quarterly activity, lobbyists, issues, committees contacted, spend trend. |
-| [`bill-watchers`](src/skills/bill-watchers.ts) | Every registered client lobbying on a bill or issue code, ranked by spend. |
-| [`spend-analysis`](src/skills/spend-analysis.ts) | Quarter-over-quarter spend series with YoY deltas and anomaly flags. |
-| [`revolving-door`](src/skills/revolving-door.ts) | Career arc for an individual lobbyist: covered positions, clients, firms. |
-| [`committee-influence`](src/skills/committee-influence.ts) | **LDA + FEC join.** Lobbying clients on issues of a member's jurisdiction × FEC contributions to that member's campaign. |
-| [`contract-trace`](src/skills/contract-trace.ts) | **LDA + USASpending join.** Lobbying spend vs. federal contract awards in the same period. |
-| [`coalition-detect`](src/skills/coalition-detect.ts) | Clients lobbying together via shared firm / shared quarters / shared issues. |
-| [`filing-diff`](src/skills/filing-diff.ts) | Diff a client's filings between two windows. Added/dropped lobbyists, issues, firms, govt entities + spend Δ. |
-| [`anomaly-scan`](src/skills/anomaly-scan.ts) | Pattern scan: late filings, new lobbyists, ex-staffer hires, issue churn, new govt entities. |
-| [`brief`](src/skills/brief.ts) | Composer: entity-profile + spend-analysis + anomaly-scan (+ optional contract-trace) as one shareable brief. |
+## The ten skills
 
-And one natural-language entrypoint:
+| Skill | Answers the question |
+| --- | --- |
+| **`entity-profile`** | Who lobbies, for whom, on what, with what spend trend? |
+| **`bill-watchers`** | Who's working this bill (or this issue code) and how much are they spending? |
+| **`spend-analysis`** | How has this client's spend moved quarter-over-quarter, and are any quarters weird? |
+| **`revolving-door`** | Where did this person work in government before they registered to lobby? What clients do they have? |
+| **`committee-influence`** 🧲 | On issues this member's committee handles — who's lobbying, and who gave to their campaign? *(LDA+FEC)* |
+| **`contract-trace`** 🧲 | How much is this client spending on lobbying vs. winning in federal contracts? *(LDA+USASpending)* |
+| **`coalition-detect`** | Which entities are lobbying together through the same firms on the same issues? |
+| **`filing-diff`** | What changed for this client between Q3 and Q4 — new lobbyists, new issues, spend delta? |
+| **`anomaly-scan`** | Late filings, ex-staffer hires, sudden issue churn, new government bodies being contacted. |
+| **`brief`** | Run `entity-profile + spend-analysis + anomaly-scan (+ contract-trace)` as one shareable document. |
 
-- **[`ask`](src/agents/ask.ts)** — Claude tool-use loop. Picks skills,
-  executes them, composes narrative.
+🧲 = cross-reference skill. Combines datasets that nobody else joins in one agent.
 
-## The four cross-references that nobody else combines in one agent
+See [`examples/`](examples/) for a runnable recipe per skill.
 
-1. **LDA + FEC** — this lobbying firm also gave $X to members of the committees of jurisdiction.
-2. **LDA + USASpending** — this company spent $X lobbying and received $Y in federal contracts in the same period.
-3. **LDA + Congress.gov** — this bill has N registered lobbyists working it; here's the breakdown.
-4. **LDA + revolving-door** — this firm hired ex-staffer X three months after they left Senator Y's office.
+---
 
-## MCP
+## The four joins nobody else combines
 
-Every skill is exposed over MCP stdio, so lobbyist drops into Claude
-Desktop, Claude Code, or Cursor:
+This is the reason an agent is the right tool for the job.
+
+### 1. LDA + FEC → **who's hiring lobbyists and writing campaign checks in the same breath**
 
 ```bash
-bun run src/cli.ts mcp        # stdio server
+lobbyist committee-influence \
+  --member="Bernie Sanders" \
+  --issue-codes=HCR,MMM \
+  --cycle=2024
 ```
 
-Register in Claude Code via `.mcp.json`:
+For every top lobbying client on a member's issues of jurisdiction, pulls
+FEC Schedule A contributions from that client's employees to the member's
+principal campaign committee. Ranked table, every number cited.
+
+### 2. LDA + USASpending → **lobbying spend vs. federal contract awards**
+
+```bash
+lobbyist contract-trace "Lockheed Martin" --year-start=2020 --year-end=2024
+```
+
+Computes total LDA-reported lobbying spend against total federal contract
+awards to the same recipient, plus a derived (**non-causal**) ratio, plus
+the top awards with agency and description.
+
+### 3. LDA + Congress.gov → **every registered lobbyist on a specific bill**
+
+```bash
+lobbyist bill-watchers --bill="Kids Online Safety Act" --year-start=2022 --year-end=2024
+```
+
+Ranked list of clients lobbying on a bill with their firms and spend.
+v1.0 will add Congress.gov bill metadata + sponsor + committees of
+jurisdiction.
+
+### 4. LDA revolving-door → **this firm hired that ex-staffer three months after they left**
+
+```bash
+lobbyist revolving-door "Heather Podesta" --year-start=2010 --year-end=2024
+```
+
+Surfaces covered-position disclosures, employer firms, client list over
+a career. The tool reports what was filed; it does not interpret
+cooling-off compliance (that's a legal question for a human).
+
+---
+
+## Natural language — `ask`
+
+If you have an Anthropic key, skip the subcommands:
+
+```bash
+lobbyist ask "How has Palantir's lobbying-to-contracts ratio changed since 2019?"
+```
+
+Claude picks the right skills, runs them, and composes a narrative that
+cites every number. Add `--stats` for token usage, `--verbose` to watch
+the tool calls, `--max-iterations=N` for long questions.
+
+```bash
+lobbyist ask "Compare Amazon and Microsoft lobbying in 2024 — who hired whom, spent what, worked what bills?"
+lobbyist ask "Who are the top 10 defense lobbying clients by 2020–2024 LDA spend, and what are their contract totals?"
+lobbyist ask "Diff Exxon's 2022 vs 2024 lobbying — what changed?"
+```
+
+---
+
+## MCP — drop into Claude Code, Claude Desktop, or Cursor
+
+```bash
+lobbyist mcp        # stdio server
+```
+
+Register in `.mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "lobbyist": {
-      "command": "bun",
-      "args": ["run", "/path/to/lobbyist/src/mcp/server.ts"]
+      "command": "lobbyist",
+      "args": ["mcp"]
     }
   }
 }
 ```
 
-Tools surfaced: `entity_profile`, `bill_watchers`, `spend_analysis`,
-`revolving_door`, `committee_influence`, `contract_trace`,
-`coalition_detect`, `filing_diff`, `anomaly_scan`, `compose_brief`,
-`recall_entity`, `annotate_entity`, `resolve_config`.
+All ten skills plus `recall_entity`, `annotate_entity`, and
+`resolve_config` are exposed as MCP tools. Works anywhere MCP works.
 
-## Memory
+---
 
-Everything you run is persisted to local SQLite. The second query about
-Pfizer is cheaper than the first because the entity-resolution graph has
-grown.
+## Memory — why the tenth query is better than the first
+
+Every skill run persists a typed Brief plus growing entity-resolution
+aliases ("Pfizer Inc" ≡ "PFIZER INC" ≡ "Pfizer, Inc.") to local SQLite.
 
 ```bash
-# List the 50 most-recently-seen entities
-bun run src/cli.ts recall
-
-# Recall briefs for a specific entity
-bun run src/cli.ts recall "Pfizer" --brief
-
-# Attach a free-text note that carries into future briefs
-bun run src/cli.ts annotate "Pfizer" "Our healthcare beat priority; track Q4 2024 amendments."
+lobbyist recall                              # 50 most-recently-seen entities
+lobbyist recall "Pfizer" --brief             # latest entity-profile for Pfizer
+lobbyist annotate "Pfizer" "Our Q4 priority — watch for amendments after earnings"
 ```
 
-## Watchlist + alerts
+### Watchlist + digest
+
+Set it and forget it:
 
 ```bash
-bun run src/cli.ts watch --add=client:12345 --window=2020-2024-all
-bun run src/cli.ts watch --list
-bun run src/cli.ts watch --once              # single pass
-bun run src/cli.ts watch --interval-minutes=60   # loop
+lobbyist watch --add=client:12345 --window=2020-2024-all
+lobbyist watch --list
+lobbyist watch --once                        # single pass
+lobbyist watch --interval-minutes=60         # daemonized
 ```
 
 Each pass re-runs `entity-profile` for every watchlist entry, diffs
 against the previously stored brief, and writes a digest to
 `~/.lobbyist/digests/YYYY-MM-DD.md`.
 
-## Architecture
+---
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full diagram.
-At a glance:
+## Output formats
 
-```
-       CLI · MCP · ask · watch
-              │
-       10 deterministic skills
-              │
-  LDA · OpenFEC · USASpending · Congress.gov  (rate-limit + cache + retry)
-              │
-       SQLite memory:
-       entities + entity_aliases (the moat) + filings + briefs + annotations + watchlist
+Every skill accepts:
+
+```bash
+--format=md        # default — human-readable markdown with inline [citations]
+--format=json      # structured envelope (entity + data + citations + markdown)
+--write=path       # write to a file instead of stdout
 ```
 
-## Privacy & compliance
+JSON is what MCP clients and `ask` consume. Good for piping to `jq`,
+Sheets, Google Docs, or your own tooling:
 
-All public data. No PHI. No PII beyond what filers themselves publish on
+```bash
+lobbyist contract-trace "Raytheon" --format=json | \
+  jq '.data.usaspending.top_awards[] | {amount, agency, description}'
+```
+
+---
+
+## Architecture at a glance
+
+```
+       CLI · MCP server · ask orchestrator · watch daemon
+                              │
+                    10 deterministic skills
+                              │
+    LDA · OpenFEC · USASpending · Congress.gov
+                 (rate-limit + on-disk cache + retry)
+                              │
+                     SQLite memory:
+     entities + entity_aliases (the moat) + filings
+        + briefs + annotations + watchlist
+```
+
+**Full diagram and component notes:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+---
+
+## Privacy, compliance, and what this tool *cannot* do
+
+**All public data.** No PHI. No PII beyond what filers publish on
 government websites. No phone-home telemetry. Cloud inference (Anthropic)
-is opt-in and only used for narrative synthesis via `ask` — never for the
-numbers. See [SECURITY.md](SECURITY.md) for the full posture.
+is opt-in and only used for narrative synthesis via `ask` — never for
+the numbers. See [SECURITY.md](SECURITY.md) for the full posture.
 
-## Guardrails
+**The tool reports what was filed.** It cannot detect:
 
-- Every claim cites a source filing (LDA filing UUID, FEC filing ID,
-  USASpending award key).
-- No inference of intent, motive, or quid-pro-quo. Co-occurrence ≠ causation.
-- Filed facts vs. derived analysis (ratios, coalition confidence) are
-  labeled as such.
-- Anomaly flags are suggestions, not accusations.
+- Unregistered lobbying or shadow lobbying
+- Off-the-books influence
+- Coordinated campaigns that bypass LDA registration
+- Intent, motive, or quid-pro-quo
+
+When a brief says "this client spent $X while this member received $Y," it
+is reporting a disclosed overlap — **not** inferring causation. Readers
+draw their own conclusions.
+
+Anomaly flags are suggestions, not accusations.
+
+---
+
+## Guardrails, in one screen
+
+- Every number cites a source filing (LDA UUID, FEC filing ID, USASpending award key, Congress.gov bill slug).
+- Filed facts (spend, rosters) and derived analysis (ratios, coalition confidence) are labeled distinctly in the output.
+- No intent language — never "to curry favor," "to buy access," "in exchange for."
 - No claims about unregistered lobbying.
+- Anomaly flags are "unusual," not "improper."
 - Timestamps on everything — LDA filings are frequently amended.
+- Shipped AS-IS under the MIT license with no warranty. Every output is a **draft for a human analyst to review**.
 
-## License
+---
 
-MIT. See [LICENSE](LICENSE).
+## For contributors
+
+```bash
+bun install
+bun test                          # 45 tests across 10 files
+bun tsc --noEmit                  # clean typecheck
+bun run dev <subcommand> [flags]  # run without a build
+bun run build                     # compile standalone bin/lobbyist
+bun run mcp                       # run MCP server directly
+```
+
+**CLAUDE.md** in the repo root is the immutable-rules document — read it
+before adding a skill.
+
+PRs welcome. Please add tests.
+
+---
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md).
+See [CHANGELOG.md](CHANGELOG.md). Current: **v0.5.0** (2026-04-22) —
+10 skills, 4 data sources, ask orchestrator, MCP server, 45 tests.
+
+## License
+
+[MIT](LICENSE). Do what you want. No warranty.
+
+---
+
+*Built by [Todd Gray](https://github.com/toddegray) as part of the [OneManSaaS](https://github.com/toddegray) open-source toolkit.*
