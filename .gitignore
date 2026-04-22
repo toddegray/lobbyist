@@ -1,0 +1,16 @@
+node_modules/
+bin/lobbyist
+dist/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+.lobbyist/
+data/cache/
+data/raw/
+coverage/
+
+# Local dev helpers (not meant for the public repo)
+.claude/
+LAUNCH.md

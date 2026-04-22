@@ -1,0 +1,26 @@
+{
+  "name": "lobbyist",
+  "version": "0.1.0",
+  "description": "AI senior lobbying analyst. Follow the money from the K Street office to the committee vote to the federal contract. Senate LDA + FEC + USASpending.gov, fully local, MIT.",
+  "author": "Todd Gray",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "lobbyist": "./bin/lobbyist"
+  },
+  "scripts": {
+    "dev": "bun run src/cli.ts",
+    "build": "bun build --compile --outfile bin/lobbyist src/cli.ts",
+    "test": "bun test",
+    "mcp": "bun run src/mcp/server.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.90.0",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.5.0"
+  }
+}
