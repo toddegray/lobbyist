@@ -16,9 +16,11 @@ import type { DbClient } from "../db/engine.ts";
 import {
   entityKey,
   lookupEntityByName,
+  normalizeEntityName,
   upsertEntity,
   upsertEntityAlias,
 } from "../db/repos.ts";
+import { jaroWinkler } from "./fuzzy.ts";
 
 export interface ClientResolution {
   client_id: number;
@@ -128,26 +130,53 @@ export async function resolveRegistrant(
 /**
  * Heuristic "best match" for a client search:
  *   1. Exact case-insensitive name match wins.
- *   2. Else, shortest name containing the query (preferring the canonical
- *      entity over a subsidiary variant).
- *   3. Else, first hit.
+ *   2. Else, normalize-equality on stripped legal-suffix form (Pfizer Inc ≡ Pfizer).
+ *   3. Else, substring containment + shortest wins.
+ *   4. Else, Jaro–Winkler similarity on normalized names (threshold 0.8).
+ *   5. Else, first hit (last-resort).
+ *
+ * This is the moat work: repeated queries for the same concept get smarter
+ * as the alias graph grows, and the fuzzy fallback catches punctuation-level
+ * variants OpenSecrets-era tools never would.
  */
 function pickBestClientMatch(hits: Client[], raw: string): Client {
-  const needle = raw.toLowerCase().trim();
-  const exact = hits.find((h) => h.name.toLowerCase().trim() === needle);
-  if (exact) return exact;
-  const contains = hits
-    .filter((h) => h.name.toLowerCase().includes(needle))
-    .sort((a, b) => a.name.length - b.name.length)[0];
-  return contains ?? hits[0]!;
+  return pickBestNamed(hits, raw);
 }
 
 function pickBestRegistrantMatch(hits: Registrant[], raw: string): Registrant {
+  return pickBestNamed(hits, raw);
+}
+
+function pickBestNamed<T extends { name: string }>(hits: T[], raw: string): T {
   const needle = raw.toLowerCase().trim();
+  const normalizedNeedle = normalizeEntityName(raw);
+
+  // 1. Exact case-insensitive
   const exact = hits.find((h) => h.name.toLowerCase().trim() === needle);
   if (exact) return exact;
+
+  // 2. Normalized equality
+  const normMatch = hits.find((h) => normalizeEntityName(h.name) === normalizedNeedle);
+  if (normMatch) return normMatch;
+
+  // 3. Substring (shortest wins)
   const contains = hits
     .filter((h) => h.name.toLowerCase().includes(needle))
     .sort((a, b) => a.name.length - b.name.length)[0];
-  return contains ?? hits[0]!;
+  if (contains) return contains;
+
+  // 4. Jaro–Winkler against normalized names
+  let best: T | null = null;
+  let bestScore = 0.8;      // threshold
+  for (const h of hits) {
+    const s = jaroWinkler(normalizedNeedle, normalizeEntityName(h.name));
+    if (s > bestScore) {
+      bestScore = s;
+      best = h;
+    }
+  }
+  if (best) return best;
+
+  // 5. Last-resort
+  return hits[0]!;
 }

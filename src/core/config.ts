@@ -42,6 +42,12 @@ const ConfigSchema = z.object({
    * future-proofing if they add auth.
    */
   usaspending_api_key: z.string().nullable().default(null),
+  /**
+   * Congress.gov API key. Shares api.data.gov's key space with OpenFEC, so
+   * users typically set a single api.data.gov key and leave this null; we
+   * fall back to openfec_api_key in resolveConfig().
+   */
+  congress_api_key: z.string().nullable().default(null),
   /** Directory where fetched API payloads are cached. */
   cache_dir: z.string().min(1).optional(),
   /** Directory where the SQLite file lives. */
@@ -93,6 +99,8 @@ export interface ResolvedConfig
   resolved_lda_key: string;
   /** Resolved OpenFEC key (env > config). May be null at v0.1. */
   resolved_openfec_key: string | null;
+  /** Resolved Congress.gov key (env > config.congress > config.openfec — same api.data.gov key space). */
+  resolved_congress_key: string | null;
   /** Resolved Anthropic key (env > config). May be null for structured-only commands. */
   resolved_anthropic_key: string | null;
 }
@@ -168,6 +176,10 @@ export async function resolveConfig(): Promise<ResolvedConfig> {
     openfec_api_key:
       process.env.LOBBYIST_OPENFEC_API_KEY || fileConfig?.openfec_api_key || null,
     usaspending_api_key: fileConfig?.usaspending_api_key ?? null,
+    congress_api_key:
+      process.env.LOBBYIST_CONGRESS_API_KEY ||
+      fileConfig?.congress_api_key ||
+      null,
     cache_dir:
       process.env.LOBBYIST_CACHE_DIR || fileConfig?.cache_dir || defaultCacheDir(),
     data_dir:
@@ -184,6 +196,12 @@ export async function resolveConfig(): Promise<ResolvedConfig> {
   const resolved_anthropic_key =
     process.env.ANTHROPIC_API_KEY || merged.anthropic_api_key || null;
 
+  // Congress.gov shares api.data.gov's key space with OpenFEC — fall back
+  // to the OpenFEC key if the user only configured one. Explicit
+  // LOBBYIST_CONGRESS_API_KEY or congress_api_key wins.
+  const resolved_congress_key =
+    merged.congress_api_key || merged.openfec_api_key || null;
+
   return {
     ...merged,
     cache_dir: merged.cache_dir!,
@@ -191,6 +209,7 @@ export async function resolveConfig(): Promise<ResolvedConfig> {
     source_path: fileConfig ? path : null,
     resolved_lda_key: ldaKey,
     resolved_openfec_key: merged.openfec_api_key,
+    resolved_congress_key,
     resolved_anthropic_key,
   };
 }
@@ -224,6 +243,7 @@ export function buildConfig(input: {
     lda_api_key: input.lda_api_key,
     openfec_api_key: input.openfec_api_key ?? null,
     usaspending_api_key: null,
+    congress_api_key: null,
     cache_dir: input.cache_dir ?? defaultCacheDir(),
     data_dir: input.data_dir ?? defaultDataDir(),
     lda_rate_limit_rps: input.lda_rate_limit_rps ?? 1,

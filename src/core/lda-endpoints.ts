@@ -253,6 +253,88 @@ export async function listFilingsByIssueSubstring(
 }
 
 /**
+ * Search individual lobbyists by name. The LDA lobbyist endpoint accepts
+ * `lobbyist_name` (substring, case-insensitive).
+ */
+const LobbyistSearchSchema = z
+  .object({
+    id: z.number().int(),
+    first_name: z.string().nullable().optional(),
+    last_name: z.string().nullable().optional(),
+    suffix: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+const LobbyistSearchPage = z.object({
+  count: z.number().int(),
+  next: z.string().url().nullable(),
+  previous: z.string().url().nullable(),
+  results: z.array(LobbyistSearchSchema),
+});
+
+export type LobbyistSearchResult = z.infer<typeof LobbyistSearchSchema>;
+
+export async function searchLobbyists(
+  client: LdaClient,
+  name: string,
+  opts: { pageSize?: number } = {},
+): Promise<LobbyistSearchResult[]> {
+  const res = await client.get(
+    "/lobbyists/",
+    { lobbyist_name: name, page_size: opts.pageSize ?? 25 },
+    LobbyistSearchPage,
+  );
+  return res.results;
+}
+
+/**
+ * List all filings in which a lobbyist (by LDA id) appears. We query the
+ * filings endpoint with `lobbyist_id`. Paginates.
+ */
+export async function listFilingsForLobbyist(
+  client: LdaClient,
+  opts: {
+    lobbyistId: number;
+    yearStart?: number;
+    yearEnd?: number;
+    pageSize?: number;
+    maxPages?: number;
+  },
+): Promise<Filing[]> {
+  const query: Record<string, string | number> = {
+    lobbyist_id: opts.lobbyistId,
+    page_size: opts.pageSize ?? 50,
+  };
+  if (opts.yearStart !== undefined) query.filing_year_min = opts.yearStart;
+  if (opts.yearEnd !== undefined) query.filing_year_max = opts.yearEnd;
+  return client.paginate("/filings/", query, FilingPageSchema, {
+    maxPages: opts.maxPages ?? 20,
+  });
+}
+
+/** List filings for a registrant (lobbying firm). */
+export async function listFilingsForRegistrant(
+  client: LdaClient,
+  opts: {
+    registrantId: number;
+    yearStart?: number;
+    yearEnd?: number;
+    pageSize?: number;
+    maxPages?: number;
+  },
+): Promise<Filing[]> {
+  const query: Record<string, string | number> = {
+    registrant_id: opts.registrantId,
+    page_size: opts.pageSize ?? 50,
+  };
+  if (opts.yearStart !== undefined) query.filing_year_min = opts.yearStart;
+  if (opts.yearEnd !== undefined) query.filing_year_max = opts.yearEnd;
+  return client.paginate("/filings/", query, FilingPageSchema, {
+    maxPages: opts.maxPages ?? 20,
+  });
+}
+
+/**
  * List filings under a specific general issue code (e.g. "HCR" = Health).
  */
 export async function listFilingsByIssueCode(
