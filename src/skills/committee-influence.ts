@@ -125,7 +125,16 @@ export async function runCommitteeInfluence(
     if (hits.length === 0) {
       throw new Error(`committee-influence: no FEC candidate matched "${input.member}".`);
     }
-    const best = hits[0]!;
+    // FEC's candidate search ranks by name-match quality, not recency — so
+    // "Bernie Sanders" can return the long-defunct 1988–2006 House Sanders
+    // ahead of the current Senate Sanders. Prefer candidates whose
+    // election_years include the target cycle; fall back to all hits if
+    // none match that filter.
+    const activeInCycle = hits.filter((c) =>
+      (c.election_years ?? []).includes(input.cycle),
+    );
+    const pool = activeInCycle.length > 0 ? activeInCycle : hits;
+    const best = pool[0]!;
     candidate_id = best.candidate_id;
     member_name = best.name ?? input.member;
     party = best.party ?? null;
