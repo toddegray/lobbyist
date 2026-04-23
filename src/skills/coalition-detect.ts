@@ -26,7 +26,7 @@
  */
 
 import type { DbClient } from "../db/engine.ts";
-import { listFilingsForClientId } from "../db/repos.ts";
+import { listFilingsForClient as listFilingsForClientMirror } from "../db/repos.ts";
 import type { LdaClient } from "../core/lda-client.ts";
 import {
   listFilingsByIssueCode,
@@ -105,19 +105,35 @@ export async function runCoalitionDetect(
     } else {
       clientId = input.client_id;
     }
-    // Target client's own filings (to identify firm/quarter pairs)
-    const targetFilings = await listFilingsForClientId(db, clientId!, {
-      yearStart: input.year_start,
-      yearEnd: input.year_end,
-    });
-    // If the memory had none, fetch them
+    // Target company's own filings across every client-firm relationship.
+    // Query by the USER'S input name — a single LDA client_id captures one
+    // relationship, companies have dozens.
+    const queryName = input.client ?? clientName;
+    const queryByName = input.client_id === undefined && queryName !== null;
+    const targetFilings = queryByName
+      ? await listFilingsForClientMirror(db, {
+          clientName: queryName!,
+          yearStart: input.year_start,
+          yearEnd: input.year_end,
+        })
+      : await listFilingsForClientMirror(db, {
+          clientId: clientId!,
+          yearStart: input.year_start,
+          yearEnd: input.year_end,
+        });
     if (targetFilings.length === 0) {
       const { listFilingsForClient } = await import("../core/lda-endpoints.ts");
-      const fetched = await listFilingsForClient(lda, {
-        clientId: clientId!,
-        yearStart: input.year_start,
-        yearEnd: input.year_end,
-      });
+      const fetched = queryByName
+        ? await listFilingsForClient(lda, {
+            clientName: queryName!,
+            yearStart: input.year_start,
+            yearEnd: input.year_end,
+          })
+        : await listFilingsForClient(lda, {
+            clientId: clientId!,
+            yearStart: input.year_start,
+            yearEnd: input.year_end,
+          });
       await upsertFilingsBatch(db, fetched);
       targetFilings.push(...fetched);
     }

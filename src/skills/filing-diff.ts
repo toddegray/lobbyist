@@ -94,11 +94,17 @@ export async function runFilingDiff(
   // Fetch the superset year range so both windows are covered
   const supersetStart = Math.min(input.from_window.year_start, input.to_window.year_start);
   const supersetEnd = Math.max(input.from_window.year_end, input.to_window.year_end);
-  const filings = await listFilingsForClient(lda, {
-    clientId: client_id,
-    yearStart: supersetStart,
-    yearEnd: supersetEnd,
-  });
+  const filings = input.client_id !== undefined
+    ? await listFilingsForClient(lda, {
+        clientId: input.client_id,
+        yearStart: supersetStart,
+        yearEnd: supersetEnd,
+      })
+    : await listFilingsForClient(lda, {
+        clientName: input.client!,
+        yearStart: supersetStart,
+        yearEnd: supersetEnd,
+      });
   await upsertFilingsBatch(db, filings);
   if (filings[0]) client_name = filings[0].client.name;
 

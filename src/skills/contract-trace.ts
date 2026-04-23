@@ -38,7 +38,7 @@ import {
 import { resolveClient } from "../core/resolve.ts";
 import type { DbClient } from "../db/engine.ts";
 import {
-  listFilingsForClientId,
+  listFilingsForClient as listFilingsForClientMirror,
   totalSpendForClient,
   upsertFilingsBatch,
 } from "../db/repos.ts";
@@ -115,27 +115,55 @@ export async function runContractTrace(
     client_name = `client #${client_id}`;
   }
 
-  // 2. Pull LDA filings (so we have an authoritative lobbying total)
-  const freshFilings = await listFilingsForClient(lda, {
-    clientId: client_id,
-    yearStart: input.year_start,
-    yearEnd: input.year_end,
-  });
+  // 2. Pull LDA filings across ALL client-firm relationships for the
+  //    company. Use the user's input name (substring match); client_id-keyed
+  //    queries would miss most filings since LDA splits a company across
+  //    dozens of relationship records.
+  const queryName = input.client ?? client_name;
+  const freshFilings = input.client_id !== undefined
+    ? await listFilingsForClient(lda, {
+        clientId: input.client_id,
+        yearStart: input.year_start,
+        yearEnd: input.year_end,
+      })
+    : await listFilingsForClient(lda, {
+        clientName: queryName,
+        yearStart: input.year_start,
+        yearEnd: input.year_end,
+      });
   await upsertFilingsBatch(db, freshFilings);
   if (freshFilings[0]) client_name = freshFilings[0].client.name;
 
-  const storedFilings = await listFilingsForClientId(db, client_id, {
-    yearStart: input.year_start,
-    yearEnd: input.year_end,
-  });
-  const total_lobbying = await totalSpendForClient(db, client_id, {
-    yearStart: input.year_start,
-    yearEnd: input.year_end,
-  });
+  const storedFilings = input.client_id !== undefined
+    ? await listFilingsForClientMirror(db, {
+        clientId: input.client_id,
+        yearStart: input.year_start,
+        yearEnd: input.year_end,
+      })
+    : await listFilingsForClientMirror(db, {
+        clientName: queryName,
+        yearStart: input.year_start,
+        yearEnd: input.year_end,
+      });
+  const total_lobbying = input.client_id !== undefined
+    ? await totalSpendForClient(db, {
+        clientId: input.client_id,
+        yearStart: input.year_start,
+        yearEnd: input.year_end,
+      })
+    : await totalSpendForClient(db, {
+        clientName: queryName,
+        yearStart: input.year_start,
+        yearEnd: input.year_end,
+      });
   const exemplar = storedFilings[0] ?? null;
 
-  // 3. Query USASpending for federal contract awards to this recipient
-  const recipientQuery = input.usaspending_recipient ?? client_name;
+  // 3. Query USASpending for federal contract awards to this recipient.
+  // Prefer the user's input name over the LDA canonical (they're different
+  // name spaces — "LOCKHEED MARTIN CORPORORATION" typo'd in LDA never
+  // matches USASpending's "LOCKHEED MARTIN CORPORATION").
+  const recipientQuery =
+    input.usaspending_recipient ?? input.client ?? client_name;
   const awards = await searchContractAwards(usa, {
     recipient: recipientQuery,
     yearStart: input.year_start,

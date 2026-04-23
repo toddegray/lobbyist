@@ -95,11 +95,17 @@ export async function runAnomalyScan(
     client_name = `client #${client_id}`;
   }
 
-  const filings = await listFilingsForClient(lda, {
-    clientId: client_id,
-    yearStart: input.year_start,
-    yearEnd: input.year_end,
-  });
+  const filings = input.client_id !== undefined
+    ? await listFilingsForClient(lda, {
+        clientId: input.client_id,
+        yearStart: input.year_start,
+        yearEnd: input.year_end,
+      })
+    : await listFilingsForClient(lda, {
+        clientName: input.client!,
+        yearStart: input.year_start,
+        yearEnd: input.year_end,
+      });
   await upsertFilingsBatch(db, filings);
   if (filings[0]) client_name = filings[0].client.name;
 

@@ -11,7 +11,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb, type DbClient } from "../src/db/engine.ts";
-import { upsertFilingsBatch, listFilingsForClientId } from "../src/db/repos.ts";
+import { upsertFilingsBatch, listFilingsForClient } from "../src/db/repos.ts";
 import type { Filing } from "../src/core/lda-endpoints.ts";
 import { filingQuarter, filingSpend } from "../src/core/lda-endpoints.ts";
 
@@ -182,7 +182,7 @@ describe("db filings mirror", () => {
     ];
     await upsertFilingsBatch(db, filings);
 
-    const loaded = await listFilingsForClientId(db, 100);
+    const loaded = await listFilingsForClient(db, { clientId: 100 });
     expect(loaded.length).toBe(2);
     const uuids = loaded.map((f) => f.filing_uuid).sort();
     expect(uuids).toEqual(["f1", "f2"]);

@@ -130,13 +130,26 @@ export async function runEntityProfile(
     client_name = `client #${client_id}`;
   }
 
-  // 2. Fetch filings, mirror into DB
-  const filings = await listFilingsForClient(lda, {
-    clientId: client_id,
-    yearStart: input.year_start,
-    yearEnd: input.year_end,
-    quarter: input.quarter,
-  });
+  // 2. Fetch filings, mirror into DB.
+  //
+  // Query by client_name (substring). Use the USER'S input rather than the
+  // LDA-resolved canonical, because any given canonical is just one of
+  // dozens of variants — some with filer-introduced typos
+  // ("LOCKHEED MARTIN CORPORORATION"). The user's input captures intent
+  // most cleanly. If the caller passed client_id, honor it precisely.
+  const filings = input.client_id !== undefined
+    ? await listFilingsForClient(lda, {
+        clientId: input.client_id,
+        yearStart: input.year_start,
+        yearEnd: input.year_end,
+        quarter: input.quarter,
+      })
+    : await listFilingsForClient(lda, {
+        clientName: input.client!,
+        yearStart: input.year_start,
+        yearEnd: input.year_end,
+        quarter: input.quarter,
+      });
   await upsertFilingsBatch(db, filings);
 
   // Refine client_name from the freshest filing if we hadn't resolved it above.

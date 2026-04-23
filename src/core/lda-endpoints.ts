@@ -241,14 +241,25 @@ async function listFilingsRanged(
 }
 
 /**
- * List all filings for a given client_id (LD-1 + LD-2) across a year range.
- * Because LDA's year filter is exact-match only, a range becomes
- * (year_end - year_start + 1) paginated API calls.
+ * List filings for a client across a year range.
+ *
+ * CRITICAL: LDA's `client_id` identifies a client-firm *relationship*, not
+ * a company. Pfizer Inc has 87 distinct client_ids in LDA — one per firm
+ * that has ever represented them. Querying by a single client_id misses
+ * most of a company's filings.
+ *
+ * The correct query for "all of a company's filings" is `client_name`
+ * (substring, case-insensitive). That's the default path here.
+ *
+ * Pass `clientId` only when you genuinely mean a specific relationship —
+ * e.g. when you already resolved an exact LDA record and want just its
+ * filings. If both are given, clientId wins.
  */
 export async function listFilingsForClient(
   client: LdaClient,
   opts: {
-    clientId: number;
+    clientName?: string;
+    clientId?: number;
     yearStart?: number;
     yearEnd?: number;
     quarter?: 1 | 2 | 3 | 4;
@@ -256,10 +267,17 @@ export async function listFilingsForClient(
     maxPages?: number;
   },
 ): Promise<Filing[]> {
+  if (opts.clientName === undefined && opts.clientId === undefined) {
+    throw new Error("listFilingsForClient requires either clientName or clientId");
+  }
   const query: Record<string, string | number> = {
-    client_id: opts.clientId,
     page_size: opts.pageSize ?? 50,
   };
+  if (opts.clientId !== undefined) {
+    query.client_id = opts.clientId;
+  } else if (opts.clientName !== undefined) {
+    query.client_name = opts.clientName;
+  }
   if (opts.quarter !== undefined) {
     query.filing_period = `${["first", "second", "third", "fourth"][opts.quarter - 1]}_quarter`;
   }

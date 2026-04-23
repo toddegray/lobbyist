@@ -279,36 +279,69 @@ export async function upsertFilingsBatch(db: DbClient, filings: Filing[]): Promi
   });
 }
 
-/** Read-back helper: all filings for a client, newest first. */
-export async function listFilingsForClientId(
+/**
+ * Read-back helper: all mirrored filings for a client, newest first.
+ *
+ * In LDA a `client_id` identifies a client-firm relationship, not a
+ * company. To get all of a company's mirrored filings, pass `clientName`
+ * (substring, case-insensitive). Pass `clientId` only for a specific
+ * relationship. If both are given, clientId wins.
+ */
+export async function listFilingsForClient(
   db: DbClient,
-  client_id: number,
-  opts: { yearStart?: number; yearEnd?: number } = {},
+  opts: {
+    clientName?: string;
+    clientId?: number;
+    yearStart?: number;
+    yearEnd?: number;
+  },
 ): Promise<Filing[]> {
-  const rows = await db.query<{ raw_json: string }>(
-    `SELECT raw_json FROM filings
-     WHERE client_id = ?
-       AND (? IS NULL OR filing_year >= ?)
-       AND (? IS NULL OR filing_year <= ?)
-     ORDER BY filing_year DESC, filing_period DESC`,
-    [
-      client_id,
-      opts.yearStart ?? null,
-      opts.yearStart ?? null,
-      opts.yearEnd ?? null,
-      opts.yearEnd ?? null,
-    ],
-  );
+  if (opts.clientName === undefined && opts.clientId === undefined) {
+    throw new Error("listFilingsForClient requires either clientName or clientId");
+  }
+  const rows = opts.clientId !== undefined
+    ? await db.query<{ raw_json: string }>(
+        `SELECT raw_json FROM filings
+         WHERE client_id = ?
+           AND (? IS NULL OR filing_year >= ?)
+           AND (? IS NULL OR filing_year <= ?)
+         ORDER BY filing_year DESC, filing_period DESC`,
+        [
+          opts.clientId,
+          opts.yearStart ?? null,
+          opts.yearStart ?? null,
+          opts.yearEnd ?? null,
+          opts.yearEnd ?? null,
+        ],
+      )
+    : await db.query<{ raw_json: string }>(
+        `SELECT raw_json FROM filings
+         WHERE LOWER(client_name) LIKE LOWER(?)
+           AND (? IS NULL OR filing_year >= ?)
+           AND (? IS NULL OR filing_year <= ?)
+         ORDER BY filing_year DESC, filing_period DESC`,
+        [
+          `%${opts.clientName}%`,
+          opts.yearStart ?? null,
+          opts.yearStart ?? null,
+          opts.yearEnd ?? null,
+          opts.yearEnd ?? null,
+        ],
+      );
   return rows.map((r) => JSON.parse(r.raw_json) as Filing);
 }
 
 /** Spend total for a client across a year range. Filed dollars only. */
 export async function totalSpendForClient(
   db: DbClient,
-  client_id: number,
-  opts: { yearStart?: number; yearEnd?: number } = {},
+  opts: {
+    clientName?: string;
+    clientId?: number;
+    yearStart?: number;
+    yearEnd?: number;
+  },
 ): Promise<number> {
-  const filings = await listFilingsForClientId(db, client_id, opts);
+  const filings = await listFilingsForClient(db, opts);
   let total = 0;
   for (const f of filings) {
     const spend = filingSpend(f);
