@@ -42,7 +42,7 @@ import {
   fecCommitteeUrl,
 } from "../core/openfec-endpoints.ts";
 import type { DbClient } from "../db/engine.ts";
-import { upsertFilingsBatch } from "../db/repos.ts";
+import { normalizeEntityName, upsertFilingsBatch } from "../db/repos.ts";
 import type { Brief, Citation, EntityId, TimeWindow } from "../core/types.ts";
 import { fmtUsd } from "../core/types.ts";
 
@@ -196,11 +196,32 @@ export async function runCommitteeInfluence(
 
   if (principal_committee_id) {
     for (const [cid, agg] of topClients) {
-      const receipts = await sumReceiptsByEmployer(fec, {
+      // FEC donors write their employer informally ("KAISER PERMANENTE",
+      // "PFIZER") — LDA stores the formal registered name ("KAISER
+      // FOUNDATION HEALTH PLAN INC"). Strip legal suffixes / punctuation
+      // before the substring match so an "INC" in the LDA name doesn't
+      // exclude every donor who wrote "KAISER PERMANENTE" instead.
+      //
+      // If the normalized name returns zero, fall back to the distinctive
+      // brand token (first non-generic word ≥4 chars). This catches the
+      // common case where donors write just the brand — "PFIZER" instead
+      // of "PFIZER INC" or "PFIZER PHARMACEUTICALS HOLDINGS".
+      const normalized = normalizeEntityName(agg.name);
+      let receipts = await sumReceiptsByEmployer(fec, {
         committee_id: principal_committee_id,
-        employer: agg.name,
+        employer: normalized,
         cycle: input.cycle,
       });
+      if (receipts.count === 0) {
+        const brand = brandToken(normalized);
+        if (brand && brand !== normalized) {
+          receipts = await sumReceiptsByEmployer(fec, {
+            committee_id: principal_committee_id,
+            employer: brand,
+            cycle: input.cycle,
+          });
+        }
+      }
       if (receipts.total > 0) {
         clients_with_contribs += 1;
         total_contrib += receipts.total;
@@ -265,6 +286,42 @@ export async function runCommitteeInfluence(
 }
 
 // ---------------------------------------------------------------------------
+
+/**
+ * Generic corporate-name qualifiers that aren't distinctive enough to be
+ * useful as a brand-token substring match. "NATIONAL" or "AMERICAN"
+ * alone would match thousands of unrelated employers in FEC ScheduleA.
+ */
+const GENERIC_BRAND_WORDS = new Set([
+  "UNITED", "NATIONAL", "AMERICAN", "INTERNATIONAL", "GLOBAL", "WORLD",
+  "ASSOCIATION", "INSTITUTE", "FOUNDATION", "FEDERATION", "FEDERATED",
+  "COUNCIL", "SOCIETY", "COALITION", "ALLIANCE", "CENTER", "CENTRE",
+  "GROUP", "PARTNERSHIP", "SERVICES", "SOLUTIONS", "SYSTEMS",
+  "NORTH", "SOUTH", "EAST", "WEST", "CENTRAL", "PACIFIC", "ATLANTIC",
+  "FIRST", "SECOND", "NEW", "GREAT",
+]);
+
+/**
+ * Extract the most distinctive brand token from a normalized entity name.
+ * Returns the first ≥4-char token that isn't a generic qualifier, or
+ * `null` if no such token exists.
+ *
+ *   "KAISER FOUNDATION HEALTH PLAN" → "KAISER"
+ *   "NATIONAL FOOTBALL LEAGUE"      → "FOOTBALL"
+ *   "AMERICAN HEART ASSOCIATION"    → "HEART"
+ *   "PFIZER"                        → "PFIZER"
+ *   "BOEING"                        → "BOEING"
+ *   "F HOFFMANN LA ROCHE"           → "HOFFMANN"
+ */
+export function brandToken(normalized: string): string | null {
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+  for (const t of tokens) {
+    if (t.length < 4) continue;
+    if (GENERIC_BRAND_WORDS.has(t)) continue;
+    return t;
+  }
+  return null;
+}
 
 function buildCitations(data: CommitteeInfluenceData): Citation[] {
   const cites: Citation[] = [];
