@@ -58,6 +58,44 @@ in reported lobbying spend [total_spend].
 
 *Illustrative — numbers depend on the live LDA database at fetch time. Every number in real output links to the underlying filing.*
 
+### Or the headline cross-reference:
+
+```
+$ lobbyist contract-trace "Lockheed Martin" --year-start=2020 --year-end=2024
+```
+```markdown
+## Lockheed Martin Corporation — Lobbying-to-Contracts Trace
+
+Window: 2020–2024.
+
+- **LDA lobbying spend:** $61,830,000 across 20 filings [lda_total].
+- **USASpending contract awards:** $311,427,184,956 across 823 awards [usa_top].
+- **Derived ratio:** 5,037× ($311.4B in contracts per $61.8M in reported
+  lobbying). _Derived; does not imply causation._
+
+### Awards by year
+
+| Year | Awards | Total |
+| ---- | ------ | ----- |
+| 2020 | 201    | $60,214,832,401 [usa_2020] |
+| 2021 | 174    | $68,932,117,209 [usa_2021] |
+| 2022 | 165    | $62,081,442,888 [usa_2022] |
+| 2023 | 158    | $58,992,811,114 [usa_2023] |
+| 2024 | 125    | $61,206,781,344 [usa_2024] |
+
+### Top awarding agencies
+
+- **Department of the Navy** — $94.8B across 211 awards.
+- **Department of the Air Force** — $83.2B across 174 awards.
+- **Missile Defense Agency** — $52.6B across 41 awards.
+- …
+
+> Co-occurrence, not causation. Federal contracts awarded to a lobbying
+> client are NOT proof that lobbying caused them.
+```
+
+*Illustrative. Every number links to a USASpending award page or an LDA filing PDF.*
+
 ---
 
 ## Install in 60 seconds
@@ -65,7 +103,18 @@ in reported lobbying spend [total_spend].
 ```bash
 git clone https://github.com/toddegray/lobbyist && cd lobbyist
 bun install
-bun link                          # makes the `lobbyist` command global
+
+# Make `lobbyist` a global command (dev mode — no rebuild after edits):
+mkdir -p ~/.bun/bin && cat > ~/.bun/bin/lobbyist <<EOF
+#!/usr/bin/env bash
+exec bun run "$(pwd)/src/cli.ts" "\$@"
+EOF
+chmod +x ~/.bun/bin/lobbyist
+
+# Make sure ~/.bun/bin is on PATH (skip if already there):
+echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
+#   bash users: swap ~/.zshrc for ~/.bashrc
+
 lobbyist init                     # interactive setup → ~/.lobbyist/config.json
 lobbyist ping                     # sanity-check your LDA key
 ```
@@ -73,11 +122,18 @@ lobbyist ping                     # sanity-check your LDA key
 That's it. No Docker, no database server, no cloud account. The whole
 thing is one SQLite file at `~/.lobbyist/data/lobbyist.db`.
 
+**Prefer a standalone binary?** `bun run build` produces `./bin/lobbyist`
+(~60 MB, self-contained — no Bun required at runtime) that you can
+symlink anywhere on `PATH`:
+```bash
+bun run build && ln -sf "$(pwd)/bin/lobbyist" ~/.bun/bin/lobbyist
+```
+
 **Requires:** [Bun 1.1+](https://bun.sh/docs/installation).
 
 **You'll need:**
 
-- [ ] **Senate LDA token** — free, instant, from <https://lda.senate.gov/api/register/>. Required.
+- [x] **Senate LDA token** — free, instant, from <https://lda.senate.gov/api/register/>. Required.
 - [ ] OpenFEC key — free, instant, from <https://api.open.fec.gov/developers/>. Optional, unlocks `committee-influence` + Congress.gov fallback.
 - [ ] Anthropic key — optional, unlocks the `ask` natural-language orchestrator.
 
@@ -102,8 +158,21 @@ lobbyist ask "Which drug-pricing clients gave the most to Senate Finance members
 ```
 
 Every command writes a markdown brief to stdout and persists a typed JSON
-envelope to local memory. Re-running is cheap (everything's cached).
-Add `--format=json` for the raw envelope or `--write=path.md` to save.
+envelope to local memory. Add `--format=json` for the raw envelope or
+`--write=path.md` to save.
+
+**What to expect on a cold cache:**
+
+| | Cold (first time) | Warm (cached) |
+| --- | --- | --- |
+| `entity-profile` | 10–30 s | <100 ms |
+| `bill-watchers` | 20–60 s | <100 ms |
+| `committee-influence` (LDA+FEC) | 60–120 s | <200 ms |
+| `contract-trace` (LDA+USASpending) | 30–60 s | <200 ms |
+
+API responses are cached to disk under `~/.lobbyist/cache/` for 24 hours
+by default. Re-running the same command is near-instant. You can blow
+away the cache any time — it's just JSON.
 
 ---
 
