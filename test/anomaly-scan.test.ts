@@ -27,7 +27,11 @@ afterEach(async () => {
 
 class FakeLda {
   constructor(public fixtures: any[] = []) {}
-  async paginate(): Promise<any[]> {
+  async paginate(_path: string, query: Record<string, unknown> = {}): Promise<any[]> {
+    if (query.filing_year !== undefined) {
+      const y = Number(query.filing_year);
+      return this.fixtures.filter((f) => f.filing_year === y);
+    }
     return this.fixtures;
   }
 }

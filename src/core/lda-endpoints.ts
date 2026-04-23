@@ -195,9 +195,55 @@ export async function searchRegistrants(
 }
 
 /**
+ * Internal helper. LDA's `filing_year` is an *exact-match* filter — there is
+ * no native range support. For a year range we issue one paginated call per
+ * year and concatenate.
+ *
+ * The browsable API at /filings/?format=api enumerates the real filter names
+ * (`filing_year`, `filing_period`, `client_id`, `registrant_id`, `lobbyist_id`,
+ * `filing_specific_lobbying_issues`, `filing_dt_posted_after`/`_before`, etc.).
+ * Parameters not in that list are silently ignored.
+ */
+async function listFilingsRanged(
+  client: LdaClient,
+  baseQuery: Record<string, string | number>,
+  opts: {
+    yearStart?: number;
+    yearEnd?: number;
+    maxPagesPerYear?: number;
+  } = {},
+): Promise<Filing[]> {
+  const maxPages = opts.maxPagesPerYear ?? 20;
+  const results: Filing[] = [];
+  if (opts.yearStart !== undefined && opts.yearEnd !== undefined) {
+    for (let y = opts.yearStart; y <= opts.yearEnd; y++) {
+      const batch = await client.paginate(
+        "/filings/",
+        { ...baseQuery, filing_year: y },
+        FilingPageSchema,
+        { maxPages },
+      );
+      results.push(...batch);
+    }
+  } else if (opts.yearStart !== undefined) {
+    const batch = await client.paginate(
+      "/filings/",
+      { ...baseQuery, filing_year: opts.yearStart },
+      FilingPageSchema,
+      { maxPages },
+    );
+    results.push(...batch);
+  } else {
+    const batch = await client.paginate("/filings/", baseQuery, FilingPageSchema, { maxPages });
+    results.push(...batch);
+  }
+  return results;
+}
+
+/**
  * List all filings for a given client_id (LD-1 + LD-2) across a year range.
- * Paginates automatically. Most clients have <100 filings across the 20+ year
- * history, so the default 20-page limit is plenty.
+ * Because LDA's year filter is exact-match only, a range becomes
+ * (year_end - year_start + 1) paginated API calls.
  */
 export async function listFilingsForClient(
   client: LdaClient,
@@ -214,22 +260,21 @@ export async function listFilingsForClient(
     client_id: opts.clientId,
     page_size: opts.pageSize ?? 50,
   };
-  if (opts.yearStart !== undefined) query.filing_year_min = opts.yearStart;
-  if (opts.yearEnd !== undefined) query.filing_year_max = opts.yearEnd;
   if (opts.quarter !== undefined) {
     query.filing_period = `${["first", "second", "third", "fourth"][opts.quarter - 1]}_quarter`;
   }
-  return client.paginate("/filings/", query, FilingPageSchema, {
-    maxPages: opts.maxPages ?? 20,
+  return listFilingsRanged(client, query, {
+    yearStart: opts.yearStart,
+    yearEnd: opts.yearEnd,
+    maxPagesPerYear: opts.maxPages ?? 20,
   });
 }
 
 /**
- * List filings where a given bill (or free-text issue) is the subject. LDA's
- * filings endpoint doesn't join on Congress.gov bill IDs; lobbyists cite bills
- * in the free-text `lobbying_activities.description` field. We use
- * `filing_specific_lobbying_issues` (substring match) as the best available
- * server-side filter, then skills do client-side narrowing.
+ * List filings where a given bill cite or issue keyword appears in the filer's
+ * free-text specific-issue description. Substring-match on
+ * `filing_specific_lobbying_issues` — the only server-side filter LDA exposes
+ * that touches issue content.
  */
 export async function listFilingsByIssueSubstring(
   client: LdaClient,
@@ -245,10 +290,10 @@ export async function listFilingsByIssueSubstring(
     filing_specific_lobbying_issues: opts.issueSubstring,
     page_size: opts.pageSize ?? 50,
   };
-  if (opts.yearStart !== undefined) query.filing_year_min = opts.yearStart;
-  if (opts.yearEnd !== undefined) query.filing_year_max = opts.yearEnd;
-  return client.paginate("/filings/", query, FilingPageSchema, {
-    maxPages: opts.maxPages ?? 20,
+  return listFilingsRanged(client, query, {
+    yearStart: opts.yearStart,
+    yearEnd: opts.yearEnd,
+    maxPagesPerYear: opts.maxPages ?? 20,
   });
 }
 
@@ -287,10 +332,7 @@ export async function searchLobbyists(
   return res.results;
 }
 
-/**
- * List all filings in which a lobbyist (by LDA id) appears. We query the
- * filings endpoint with `lobbyist_id`. Paginates.
- */
+/** List all filings in which a lobbyist (by LDA id) appears. */
 export async function listFilingsForLobbyist(
   client: LdaClient,
   opts: {
@@ -301,15 +343,18 @@ export async function listFilingsForLobbyist(
     maxPages?: number;
   },
 ): Promise<Filing[]> {
-  const query: Record<string, string | number> = {
-    lobbyist_id: opts.lobbyistId,
-    page_size: opts.pageSize ?? 50,
-  };
-  if (opts.yearStart !== undefined) query.filing_year_min = opts.yearStart;
-  if (opts.yearEnd !== undefined) query.filing_year_max = opts.yearEnd;
-  return client.paginate("/filings/", query, FilingPageSchema, {
-    maxPages: opts.maxPages ?? 20,
-  });
+  return listFilingsRanged(
+    client,
+    {
+      lobbyist_id: opts.lobbyistId,
+      page_size: opts.pageSize ?? 50,
+    },
+    {
+      yearStart: opts.yearStart,
+      yearEnd: opts.yearEnd,
+      maxPagesPerYear: opts.maxPages ?? 20,
+    },
+  );
 }
 
 /** List filings for a registrant (lobbying firm). */
@@ -323,19 +368,36 @@ export async function listFilingsForRegistrant(
     maxPages?: number;
   },
 ): Promise<Filing[]> {
-  const query: Record<string, string | number> = {
-    registrant_id: opts.registrantId,
-    page_size: opts.pageSize ?? 50,
-  };
-  if (opts.yearStart !== undefined) query.filing_year_min = opts.yearStart;
-  if (opts.yearEnd !== undefined) query.filing_year_max = opts.yearEnd;
-  return client.paginate("/filings/", query, FilingPageSchema, {
-    maxPages: opts.maxPages ?? 20,
-  });
+  return listFilingsRanged(
+    client,
+    {
+      registrant_id: opts.registrantId,
+      page_size: opts.pageSize ?? 50,
+    },
+    {
+      yearStart: opts.yearStart,
+      yearEnd: opts.yearEnd,
+      maxPagesPerYear: opts.maxPages ?? 20,
+    },
+  );
 }
 
 /**
- * List filings under a specific general issue code (e.g. "HCR" = Health).
+ * List filings matching a general issue code (e.g. "HCR" = Health).
+ *
+ * **Honest caveat:** LDA has no server-side filter on `general_issue_code`.
+ * The only issue-content filter is `filing_specific_lobbying_issues`, which
+ * substring-matches the free-text description field. We use it as the
+ * server-side narrowing pass (it catches filings where the code string
+ * happens to appear in the description), then we client-side filter the
+ * results to keep only filings whose `lobbying_activities[].general_issue_code`
+ * actually matches the requested code.
+ *
+ * This is NOT a guaranteed-complete scan — filings that don't literally
+ * include the code in their description text will be missed. For broader
+ * coverage, prefer `listFilingsByIssueSubstring` with a human-readable
+ * keyword (e.g. "healthcare" instead of "HCR") or walk filings via
+ * client / registrant / lobbyist filters.
  */
 export async function listFilingsByIssueCode(
   client: LdaClient,
@@ -347,15 +409,24 @@ export async function listFilingsByIssueCode(
     maxPages?: number;
   },
 ): Promise<Filing[]> {
-  const query: Record<string, string | number> = {
-    filing_general_issue_code: opts.issueCode,
-    page_size: opts.pageSize ?? 50,
-  };
-  if (opts.yearStart !== undefined) query.filing_year_min = opts.yearStart;
-  if (opts.yearEnd !== undefined) query.filing_year_max = opts.yearEnd;
-  return client.paginate("/filings/", query, FilingPageSchema, {
-    maxPages: opts.maxPages ?? 20,
-  });
+  const code = opts.issueCode.toUpperCase();
+  const raw = await listFilingsRanged(
+    client,
+    {
+      filing_specific_lobbying_issues: code,
+      page_size: opts.pageSize ?? 50,
+    },
+    {
+      yearStart: opts.yearStart,
+      yearEnd: opts.yearEnd,
+      maxPagesPerYear: opts.maxPages ?? 20,
+    },
+  );
+  return raw.filter((f) =>
+    (f.lobbying_activities ?? []).some(
+      (a) => (a.general_issue_code ?? "").toUpperCase() === code,
+    ),
+  );
 }
 
 // ---------------------------------------------------------------------------

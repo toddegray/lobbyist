@@ -224,8 +224,16 @@ export class LdaClient {
               : res.status === 404
                 ? " — endpoint not found (the LDA API is migrating to lda.gov on 2026-06-30; try updating base_url)"
                 : "";
+        // LDA / DRF returns a JSON body with the specific complaint on 4xx.
+        // Surface it in the error message — without it, we're debugging blind.
+        const bodyHint =
+          body && typeof body === "object"
+            ? `\n  body: ${JSON.stringify(body).slice(0, 500)}`
+            : "";
+        const qs = url.split("?")[1] ?? "";
+        const queryHint = qs ? `\n  query: ${qs}` : "";
         throw new LdaError(
-          `LDA ${res.status} on GET ${normalizedPath}${hint}`,
+          `LDA ${res.status} on GET ${normalizedPath}${hint}${queryHint}${bodyHint}`,
           res.status,
           url,
           body,

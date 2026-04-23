@@ -33,14 +33,18 @@ afterEach(async () => {
   await rm(tmp, { recursive: true, force: true });
 });
 
-// Fake LdaClient: returns pre-set filings via paginate (the method the
-// endpoint helper `listFilingsForClient` ultimately calls).
+// Fake LdaClient: returns fixtures via paginate, filtering by filing_year
+// to match the real LDA API (which has no range filter — skills loop per-year).
 class FakeLdaClient {
   constructor(public fixtures: Filing[] = []) {}
   async get(): Promise<any> {
     throw new Error("FakeLdaClient.get not expected in filing-diff test path");
   }
-  async paginate(): Promise<Filing[]> {
+  async paginate(_path: string, query: Record<string, unknown>): Promise<Filing[]> {
+    if (query && query.filing_year !== undefined) {
+      const y = Number(query.filing_year);
+      return this.fixtures.filter((f) => f.filing_year === y);
+    }
     return this.fixtures;
   }
 }
