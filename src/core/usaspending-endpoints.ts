@@ -51,15 +51,16 @@ const AwardRowSchema = z
 
 export type AwardRow = z.infer<typeof AwardRowSchema>;
 
+// page_metadata shape verified live against POST /search/spending_by_award/:
+//   { page, hasNext, last_record_unique_id, last_record_sort_value }
+// Older docs mention hasPrevious/next/previous — not present in 2026.
+// Everything except page + hasNext is tolerated as passthrough.
 const SearchAwardResponseSchema = z.object({
-  limit: z.number().int(),
+  limit: z.number().int().optional(),
   page_metadata: z
     .object({
       page: z.number().int(),
       hasNext: z.boolean(),
-      hasPrevious: z.boolean(),
-      next: z.number().nullable().optional(),
-      previous: z.number().nullable().optional(),
     })
     .passthrough(),
   results: z.array(AwardRowSchema),

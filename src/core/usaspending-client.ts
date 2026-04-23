@@ -68,8 +68,27 @@ class RateLimiter {
   }
 }
 
-function cacheKey(path: string, bodyJson: string): string {
-  return createHash("sha256").update(`${path}\n${bodyJson}`).digest("hex").slice(0, 16);
+function cacheKey(path: string, canonicalBody: string): string {
+  return createHash("sha256").update(`${path}\n${canonicalBody}`).digest("hex").slice(0, 16);
+}
+
+/**
+ * Canonical JSON: recursively sort object keys so the same logical body
+ * always hashes to the same cache key, regardless of property insertion
+ * order.
+ *
+ * NOTE: Do NOT use JSON.stringify(body, Object.keys(body).sort()) for this.
+ * The second arg of JSON.stringify, when given an array, acts as a
+ * property FILTER applied recursively — nested keys not in the top-level
+ * allow-list get silently stripped. That shipped as a bug once; these
+ * lines exist so it doesn't ship twice.
+ */
+function stableStringify(v: unknown): string {
+  if (v === null || typeof v !== "object") return JSON.stringify(v);
+  if (Array.isArray(v)) return `[${v.map(stableStringify).join(",")}]`;
+  const obj = v as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(",")}}`;
 }
 
 interface CacheEnvelope {
@@ -102,8 +121,11 @@ export class UsaSpendingClient {
     opts: { bypassCache?: boolean } = {},
   ): Promise<T> {
     const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-    const bodyJson = JSON.stringify(body, Object.keys(body as object).sort());
-    const key = cacheKey(normalizedPath, bodyJson);
+    // Cache key uses a canonical (recursive key-sorted) form; the actual
+    // body sent to the API is the verbatim user-supplied object.
+    const bodyJson = JSON.stringify(body);
+    const canonicalBody = stableStringify(body);
+    const key = cacheKey(normalizedPath, canonicalBody);
     const cacheFile = join(this.opts.cacheDir, "usaspending", `${key}.json`);
 
     if (!opts.bypassCache) {
@@ -127,8 +149,15 @@ export class UsaSpendingClient {
     const resBody = await res.json().catch(() => null);
 
     if (!res.ok) {
+      // USASpending returns a JSON body with the specific complaint on 4xx
+      // (missing required fields, bad enum values, etc.). Surface it so we
+      // don't debug blind.
+      const bodyHint =
+        resBody && typeof resBody === "object"
+          ? `\n  body: ${JSON.stringify(resBody).slice(0, 500)}`
+          : "";
       throw new UsaSpendingError(
-        `USASpending ${res.status} on POST ${normalizedPath}`,
+        `USASpending ${res.status} on POST ${normalizedPath}${bodyHint}`,
         res.status,
         url,
         resBody,
@@ -174,8 +203,12 @@ export class UsaSpendingClient {
     });
     const body = await res.json().catch(() => null);
     if (!res.ok) {
+      const bodyHint =
+        body && typeof body === "object"
+          ? `\n  body: ${JSON.stringify(body).slice(0, 500)}`
+          : "";
       throw new UsaSpendingError(
-        `USASpending ${res.status} on GET ${normalizedPath}`,
+        `USASpending ${res.status} on GET ${normalizedPath}${bodyHint}`,
         res.status,
         url,
         body,
