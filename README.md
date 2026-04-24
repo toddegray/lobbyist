@@ -22,79 +22,96 @@ here. This is the open-source toolkit we deserve.
 $ lobbyist entity-profile "Pfizer Inc" --year-start=2020 --year-end=2024
 ```
 ```markdown
-## Pfizer Inc — Lobbying Profile
+## PFIZER, INC. — Lobbying Profile
 
-Pfizer Inc filed 20 LDA filings covering 2020–2024, with $57,520,000
-in reported lobbying spend [total_spend].
+PFIZER, INC. filed 294 LDA filings covering 2020–2024, with
+$100,375,000 in reported lobbying spend [total_spend].
 
 - Activity window: 2020 → 2024 (20 active quarters).
+- Registered address: NY, US.
 
 ### Spend by year
 
 | Year | Filings | Reported spend |
 | ---- | ------- | -------------- |
-| 2020 | 4       | $11,120,000 [year_2020] |
-| 2021 | 4       | $12,560,000 [year_2021] |
-| 2022 | 4       | $14,400,000 [year_2022] |
-| 2023 | 4       | $11,220,000 [year_2023] |
-| 2024 | 4       |  $8,220,000 [year_2024] |
+| 2020 | 55      | $13,830,000 [year_2020] |
+| 2021 | 59      | $16,050,000 [year_2021] |
+| 2022 | 65      | $27,690,000 [year_2022] |
+| 2023 | 67      | $17,045,000 [year_2023] |
+| 2024 | 48      | $25,760,000 [year_2024] |
 
 ### Lobbying firms employed (top 5 by filings)
 
-- Akin Gump Strauss Hauer & Feld LLP — 20 filings
-- Invariant LLC — 19 filings
-- …
+- **PFIZER INC.** — 31 filings, $87,380,000 reported.
+- **THE WASHINGTON TAX & PUBLIC POLICY GROUP** — 21 filings, $1,480,000 reported.
+- **AVOQ, LLC** — 22 filings, $1,290,000 reported.
+- **NVG, LLC** — 20 filings, $1,280,000 reported.
+- **THE DUBERSTEIN GROUP INC.** — 20 filings, $1,260,000 reported.
 
 ### Issues lobbied (top 5 by filing count)
 
-- HCR — Health Issues (18 filings)
-- MMM — Medicare/Medicaid (14 filings)
-- TAX — Taxation (12 filings)
-- …
+- **HCR** — Health Issues (183 filings).
+- **TRD** — Trade, domestic/foreign (123 filings).
+- **TAX** — Taxation / Internal Revenue Code (105 filings).
+- **MMM** — Medicare / Medicaid (77 filings).
+- **CPT** — Copyright / Patent / Trademark (71 filings).
+
+### Government entities contacted (top 5)
+
+- SENATE (551 filings).
+- HOUSE OF REPRESENTATIVES (534 filings).
+- Health & Human Services, Dept of (HHS) (114 filings).
+- White House Office (113 filings).
+- U.S. Trade Representative (USTR) (88 filings).
 
 > Filed facts only. Every figure cites a Senate LDA filing.
 > The tool cannot detect unregistered lobbying.
 ```
 
-*Illustrative — numbers depend on the live LDA database at fetch time. Every number in real output links to the underlying filing.*
+*Real output captured from the live LDA database in April 2026. Exact
+figures drift as filings are amended; the tool re-fetches on demand.*
 
-### Or the headline cross-reference:
+### Or the headline cross-reference — LDA × FEC in one query:
 
 ```
-$ lobbyist contract-trace "Lockheed Martin" --year-start=2020 --year-end=2024
+$ lobbyist committee-influence --member="Bernie Sanders" \
+    --issue-codes=HCR,MMM --cycle=2024
 ```
 ```markdown
-## Lockheed Martin Corporation — Lobbying-to-Contracts Trace
+## Committee-of-jurisdiction influence: SANDERS, BERNARD (IND)-VT
 
-Window: 2020–2024.
+Issue codes examined: **HCR, MMM**. FEC cycle: 2024.
 
-- **LDA lobbying spend:** $61,830,000 across 20 filings [lda_total].
-- **USASpending contract awards:** $311,427,184,956 across 823 awards [usa_top].
-- **Derived ratio:** 5,037× ($311.4B in contracts per $61.8M in reported
-  lobbying). _Derived; does not imply causation._
+On the LDA side: **71** clients filed **241** filings on these issues,
+with **$36,040,508** reported spend.
+On the FEC side: of the top 10 lobbying clients, **7** had employees
+contribute to FRIENDS OF BERNIE SANDERS [committee_fec], totalling
+**$37,040**.
 
-### Awards by year
+### LDA spend × FEC contributions (top clients)
 
-| Year | Awards | Total |
-| ---- | ------ | ----- |
-| 2020 | 201    | $60,214,832,401 [usa_2020] |
-| 2021 | 174    | $68,932,117,209 [usa_2021] |
-| 2022 | 165    | $62,081,442,888 [usa_2022] |
-| 2023 | 158    | $58,992,811,114 [usa_2023] |
-| 2024 | 125    | $61,206,781,344 [usa_2024] |
+| Client | LDA filings | LDA spend | FEC contribs | Contrib txns |
+| --- | --- | --- | --- | --- |
+| **CALIFORNIA HOSPITAL ASSOCIATION** | 19 | $7,850,000 | $17,844 | 500 |
+| **KAISER FOUNDATION HEALTH PLAN INC** | 5 | $7,280,000 | $5,330 | 300 |
+| **GENENTECH INC** | 2 | $4,050,000 | $632 | 27 |
+| **NATIONAL ASSOCIATION OF COMMUNITY HEALTH CENTERS** | 11 | $3,808,400 | $11,893 | 500 |
+| **F HOFFMANN-LA ROCHE LTD AND ITS AFFILIATES** | 18 | $2,225,000 | $0 | 0 |
+| **NATIONAL FOOTBALL LEAGUE** | 25 | $1,990,000 | $0 | 0 |
+| **CHRO ASSOCIATION (FKA HR POLICY ASSOCIATION)** | 2 | $1,550,000 | $583 | 11 |
+| **PLASMA PROTEIN THERAPEUTICS ASSOCIATION** | 9 | $1,430,000 | $0 | 0 |
+| **NATIONAL RIGHT LIFE COMMITTEE** | 22 | $1,408,000 | $681 | 40 |
+| **UT SOUTHWESTERN MEDICAL CENTER** | 8 | $905,125 | $77 | 10 |
 
-### Top awarding agencies
-
-- **Department of the Navy** — $94.8B across 211 awards.
-- **Department of the Air Force** — $83.2B across 174 awards.
-- **Missile Defense Agency** — $52.6B across 41 awards.
-- …
-
-> Co-occurrence, not causation. Federal contracts awarded to a lobbying
-> client are NOT proof that lobbying caused them.
+> Disclosed overlap between lobbying spend and campaign contributions.
+> This is NOT a claim of quid-pro-quo; causality cannot be inferred
+> from the filings. The tool surfaces the overlap; the reader decides
+> what it means.
 ```
 
-*Illustrative. Every number links to a USASpending award page or an LDA filing PDF.*
+*Real output. Every filing ID, spend figure, and contribution dollar
+links back to its source record — `--format=json` dumps the full
+structured envelope with citations.*
 
 ---
 
@@ -134,7 +151,7 @@ bun run build && ln -sf "$(pwd)/bin/lobbyist" ~/.bun/bin/lobbyist
 **You'll need:**
 
 - [x] **Senate LDA token** — free, instant, from <https://lda.senate.gov/api/register/>. Required.
-- [ ] OpenFEC key — free, instant, from <https://api.open.fec.gov/developers/>. Optional, unlocks `committee-influence` + Congress.gov fallback.
+- [ ] OpenFEC key — free, instant, from <https://api.open.fec.gov/developers/>. Optional, unlocks `committee-influence` (LDA+FEC join) and `bill-watchers --congress-bill=…` (Congress.gov enrichment). One api.data.gov key works for both FEC and Congress.gov.
 - [ ] Anthropic key — optional, unlocks the `ask` natural-language orchestrator.
 
 `lobbyist init` walks you through all three.
@@ -181,7 +198,7 @@ away the cache any time — it's just JSON.
 | Skill | Answers the question |
 | --- | --- |
 | **`entity-profile`** | Who lobbies, for whom, on what, with what spend trend? |
-| **`bill-watchers`** | Who's working this bill (or this issue code) and how much are they spending? |
+| **`bill-watchers`** 🧲 | Who's working this bill (or this issue code) and how much are they spending? Optionally enriches with Congress.gov bill metadata + committees of jurisdiction. |
 | **`spend-analysis`** | How has this client's spend moved quarter-over-quarter, and are any quarters weird? |
 | **`revolving-door`** | Where did this person work in government before they registered to lobby? What clients do they have? |
 | **`committee-influence`** 🧲 | On issues this member's committee handles — who's lobbying, and who gave to their campaign? *(LDA+FEC)* |
@@ -227,12 +244,18 @@ the top awards with agency and description.
 ### 3. LDA + Congress.gov → **every registered lobbyist on a specific bill**
 
 ```bash
+# Use the official Congress.gov reference for exact match + metadata
+lobbyist bill-watchers --congress-bill=117/HR/4346 --year-start=2021 --year-end=2023
+
+# Or use a free-text substring (no Congress.gov enrichment needed)
 lobbyist bill-watchers --bill="Kids Online Safety Act" --year-start=2022 --year-end=2024
 ```
 
-Ranked list of clients lobbying on a bill with their firms and spend.
-v1.0 will add Congress.gov bill metadata + sponsor + committees of
-jurisdiction.
+When `--congress-bill=CONGRESS/TYPE/NUMBER` is supplied, the brief is
+enriched with the bill's official title, sponsor (name / party / state),
+introduction date, latest action, and committees of jurisdiction — all
+pulled from Congress.gov. The official title is also used as the LDA
+substring for broader coverage than the user's typed phrasing.
 
 ### 4. LDA revolving-door → **this firm hired that ex-staffer three months after they left**
 

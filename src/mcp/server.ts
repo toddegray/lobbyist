@@ -20,6 +20,7 @@ import { resolveConfig, type ResolvedConfig } from "../core/config.ts";
 import { LdaClient } from "../core/lda-client.ts";
 import { OpenFecClient } from "../core/openfec-client.ts";
 import { UsaSpendingClient } from "../core/usaspending-client.ts";
+import { CongressClient } from "../core/congress-client.ts";
 import { openDb, type DbClient } from "../db/engine.ts";
 import {
   addAnnotation,
@@ -50,6 +51,7 @@ let cachedCfg: ResolvedConfig | null = null;
 let cachedLda: LdaClient | null = null;
 let cachedFec: OpenFecClient | null = null;
 let cachedUsa: UsaSpendingClient | null = null;
+let cachedCongress: CongressClient | null = null;
 let cachedDb: DbClient | null = null;
 
 async function ensureCfg(): Promise<ResolvedConfig> {
@@ -91,6 +93,23 @@ async function ensureUsa(): Promise<UsaSpendingClient> {
     });
   }
   return cachedUsa;
+}
+/**
+ * Congress.gov client is optional — returned null if no api.data.gov key is
+ * configured. Callers should handle null (the bill_watchers tool degrades
+ * gracefully; congress_bill just won't be enriched).
+ */
+async function ensureCongress(): Promise<CongressClient | null> {
+  if (!cachedCongress) {
+    const cfg = await ensureCfg();
+    if (!cfg.resolved_congress_key) return null;
+    cachedCongress = new CongressClient({
+      apiKey: cfg.resolved_congress_key,
+      cacheDir: cfg.cache_dir,
+      rateLimitRps: 1,
+    });
+  }
+  return cachedCongress;
 }
 async function ensureDb(): Promise<DbClient> {
   if (!cachedDb) {
@@ -162,12 +181,23 @@ const TOOLS: Tool[] = [
   },
   {
     name: "bill_watchers",
-    description: "Clients lobbying on a given bill (free-text substring) or LDA general issue code.",
+    description:
+      "Clients lobbying on a given bill (free-text substring, LDA general issue code, or Congress.gov exact bill reference). When congress_bill is supplied, the output is enriched with official title, sponsor, committees of jurisdiction.",
     inputSchema: {
       type: "object",
       properties: {
-        bill: { type: "string" },
-        issue_code: { type: "string" },
+        bill: { type: "string", description: "Free-text substring matched against LDA filings' specific-issue field." },
+        issue_code: { type: "string", description: "LDA general issue code (e.g. HCR, TAX)." },
+        congress_bill: {
+          type: "object",
+          description: "Exact Congress.gov bill reference. Enriches output with bill metadata.",
+          properties: {
+            congress: { type: "integer" },
+            type: { type: "string", description: "HR | S | HJRES | SJRES | HCONRES | SCONRES | HRES | SRES" },
+            number: { type: "string" },
+          },
+          required: ["congress", "type", "number"],
+        },
         year_start: { type: "integer" },
         year_end: { type: "integer" },
         quarter: { type: "integer", enum: [1, 2, 3, 4] },
@@ -341,13 +371,24 @@ async function dispatch(name: string, args: Record<string, unknown>): Promise<Ca
         return shipBrief(brief);
       }
       case "bill_watchers": {
-        const brief = await runBillWatchers(await ensureLda(), await ensureDb(), {
-          bill: args.bill as string | undefined,
-          issue_code: args.issue_code as string | undefined,
-          year_start: ys,
-          year_end: ye,
-          quarter: args.quarter as 1 | 2 | 3 | 4 | undefined,
-        });
+        const cb = args.congress_bill as
+          | { congress: number; type: string; number: string | number }
+          | undefined;
+        const brief = await runBillWatchers(
+          await ensureLda(),
+          await ensureDb(),
+          {
+            bill: args.bill as string | undefined,
+            issue_code: args.issue_code as string | undefined,
+            congress_bill: cb
+              ? { congress: cb.congress, type: cb.type, number: String(cb.number) }
+              : undefined,
+            year_start: ys,
+            year_end: ye,
+            quarter: args.quarter as 1 | 2 | 3 | 4 | undefined,
+          },
+          await ensureCongress(),
+        );
         return shipBrief(brief);
       }
       case "spend_analysis": {

@@ -2,6 +2,27 @@
 
 Notable changes to lobbyist. Dates are calendar dates; semver follows.
 
+## Unreleased
+
+### Added
+- **`bill-watchers --congress-bill=CONGRESS/TYPE/NUMBER`** — exact
+  Congress.gov bill reference (e.g. `117/HR/4346`). Enriches the brief
+  with the bill's official title, sponsor (name / party / state),
+  introduction date, latest action, and committees of jurisdiction.
+  The official title is also used as the LDA substring for broader
+  coverage than the user's typed phrasing.
+- **7 Congress.gov endpoint tests** (`test/congress-endpoints.test.ts`)
+  pinning real live response shapes — `getBill`, `getBillCommittees`,
+  `getMember`, plus URL and label helpers. Fixture data captured live
+  in April 2026.
+
+### Fixed
+- **Congress.gov schemas** previously shipped with fabricated shapes
+  (e.g. `member.terms` written as `{item: [...]}` when the real API
+  returns a list; required fields that don't exist). All rewritten
+  against verified live responses. MCP tool schema + ask orchestrator
+  tool schema updated to surface the new `congress_bill` arg.
+
 ## [0.5.0] — 2026-04-22
 
 ### Added

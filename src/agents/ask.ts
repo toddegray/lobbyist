@@ -21,6 +21,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { LdaClient } from "../core/lda-client.ts";
 import type { OpenFecClient } from "../core/openfec-client.ts";
 import type { UsaSpendingClient } from "../core/usaspending-client.ts";
+import type { CongressClient } from "../core/congress-client.ts";
 import type { DbClient } from "../db/engine.ts";
 import type { ResolvedConfig } from "../core/config.ts";
 import { saveBrief, upsertEntity } from "../db/repos.ts";
@@ -43,6 +44,7 @@ export interface AskContext {
   lda: LdaClient;
   openfec: OpenFecClient | null;
   usaspending: UsaSpendingClient | null;
+  congress: CongressClient | null;
   db: DbClient;
 }
 
@@ -100,12 +102,21 @@ const TOOLS: Anthropic.Messages.Tool[] = [
   {
     name: "bill_watchers",
     description:
-      "Who's lobbying on a given bill or issue code? Provide either `bill` (free-text) or `issue_code` (LDA code like HCR).",
+      "Who's lobbying on a given bill or issue code? Provide `bill` (LDA substring), `issue_code` (LDA general code like HCR), or `congress_bill` (Congress.gov exact reference — enriches output with official title, sponsor, committees of jurisdiction).",
     input_schema: {
       type: "object",
       properties: {
         bill: { type: "string" },
         issue_code: { type: "string" },
+        congress_bill: {
+          type: "object",
+          properties: {
+            congress: { type: "integer" },
+            type: { type: "string" },
+            number: { type: "string" },
+          },
+          required: ["congress", "type", "number"],
+        },
         year_start: { type: "integer" },
         year_end: { type: "integer" },
       },
@@ -337,12 +348,23 @@ async function runTool(
       return toolOut(b);
     }
     case "bill_watchers": {
-      const b = await runBillWatchers(ctx.lda, ctx.db, {
-        bill: args.bill as string | undefined,
-        issue_code: args.issue_code as string | undefined,
-        year_start: ys,
-        year_end: ye,
-      });
+      const cb = args.congress_bill as
+        | { congress: number; type: string; number: string | number }
+        | undefined;
+      const b = await runBillWatchers(
+        ctx.lda,
+        ctx.db,
+        {
+          bill: args.bill as string | undefined,
+          issue_code: args.issue_code as string | undefined,
+          congress_bill: cb
+            ? { congress: cb.congress, type: cb.type, number: String(cb.number) }
+            : undefined,
+          year_start: ys,
+          year_end: ye,
+        },
+        ctx.congress,
+      );
       await persist(ctx, b);
       return toolOut(b);
     }

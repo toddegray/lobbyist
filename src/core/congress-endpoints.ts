@@ -3,9 +3,10 @@
  *
  * API docs: https://api.congress.gov/
  *
- * Scope at v0.5: bill metadata lookup and member → committee lookup. We
- * deliberately do NOT try to wrap the full Congress.gov surface — it's huge
- * and most of it is orthogonal to the money-in-politics thesis.
+ * Scope: bill metadata + committees of jurisdiction + member biographical
+ * info. Verified against live responses (April 2026). We use `.passthrough()`
+ * on most objects so we only schema fields the skills actually consume —
+ * Congress.gov returns large envelopes with many fields we don't use.
  */
 
 import { z } from "zod";
@@ -15,33 +16,40 @@ import type { CongressClient } from "./congress-client.ts";
 // Bill
 // ---------------------------------------------------------------------------
 
+const SponsorSchema = z
+  .object({
+    bioguideId: z.string(),
+    fullName: z.string().optional(),
+    firstName: z.string().optional(),
+    lastName: z.string().optional(),
+    party: z.string().optional(),
+    state: z.string().optional(),
+    district: z.number().int().optional(),
+    url: z.string().optional(),
+  })
+  .passthrough();
+
+const LatestActionSchema = z
+  .object({
+    actionDate: z.string().optional(),
+    text: z.string().optional(),
+  })
+  .passthrough();
+
 const BillSchema = z
   .object({
     congress: z.number().int(),
-    type: z.string(),           // "HR", "S", "HJRES", "SJRES", ...
-    number: z.number().int().or(z.string()),
-    title: z.string().nullable().optional(),
-    introducedDate: z.string().nullable().optional(),
-    latestAction: z
-      .object({
-        actionDate: z.string().nullable().optional(),
-        text: z.string().nullable().optional(),
-      })
+    type: z.string(),                     // "HR", "S", "HJRES", "SJRES", ...
+    number: z.union([z.string(), z.number()]),   // live API returns string
+    title: z.string().optional(),
+    introducedDate: z.string().optional(),
+    latestAction: LatestActionSchema.optional(),
+    sponsors: z.array(SponsorSchema).default([]),
+    policyArea: z
+      .object({ name: z.string().optional() })
       .passthrough()
-      .nullable()
       .optional(),
-    sponsors: z
-      .array(
-        z
-          .object({
-            bioguideId: z.string().nullable().optional(),
-            fullName: z.string().nullable().optional(),
-            party: z.string().nullable().optional(),
-            state: z.string().nullable().optional(),
-          })
-          .passthrough(),
-      )
-      .default([]),
+    originChamber: z.string().optional(),
   })
   .passthrough();
 
@@ -51,6 +59,9 @@ const BillResponseSchema = z.object({
   bill: BillSchema,
 }) as unknown as z.ZodType<{ bill: Bill }>;
 
+/**
+ * Fetch bill metadata. type is case-insensitive (we lowercase for the URL).
+ */
 export async function getBill(
   client: CongressClient,
   opts: { congress: number; type: string; number: string | number },
@@ -62,39 +73,96 @@ export async function getBill(
 }
 
 // ---------------------------------------------------------------------------
+// Bill committees (committees of jurisdiction)
+// ---------------------------------------------------------------------------
+
+const BillCommitteeActivitySchema = z
+  .object({
+    date: z.string().optional(),
+    name: z.string().optional(),
+  })
+  .passthrough();
+
+const BillCommitteeSchema = z
+  .object({
+    chamber: z.string(),
+    name: z.string(),
+    systemCode: z.string(),
+    type: z.string().optional(),
+    url: z.string().optional(),
+    activities: z.array(BillCommitteeActivitySchema).default([]),
+  })
+  .passthrough();
+
+export type BillCommittee = z.infer<typeof BillCommitteeSchema>;
+
+const BillCommitteesResponseSchema = z.object({
+  committees: z.array(BillCommitteeSchema).default([]),
+}) as unknown as z.ZodType<{ committees: BillCommittee[] }>;
+
+/**
+ * Committees of jurisdiction for a bill — the chambers + standing committees
+ * the bill was referred to, with activity timestamps.
+ */
+export async function getBillCommittees(
+  client: CongressClient,
+  opts: { congress: number; type: string; number: string | number },
+): Promise<BillCommittee[]> {
+  const typeLower = opts.type.toLowerCase();
+  const path = `/bill/${opts.congress}/${typeLower}/${opts.number}/committees`;
+  const res = await client.get(path, {}, BillCommitteesResponseSchema);
+  return res.committees;
+}
+
+// ---------------------------------------------------------------------------
 // Member
 // ---------------------------------------------------------------------------
+
+const MemberTermSchema = z
+  .object({
+    chamber: z.string().optional(),
+    congress: z.number().int().optional(),
+    startYear: z.number().int().optional(),
+    endYear: z.number().int().optional(),
+    memberType: z.string().optional(),
+    stateCode: z.string().optional(),
+    stateName: z.string().optional(),
+    party: z.string().optional(),
+    partyName: z.string().optional(),
+    district: z.number().int().optional(),
+  })
+  .passthrough();
+
+const PartyHistoryEntrySchema = z
+  .object({
+    partyAbbreviation: z.string().optional(),
+    partyName: z.string().optional(),
+    startYear: z.number().int().optional(),
+    endYear: z.number().int().optional(),
+  })
+  .passthrough();
 
 const MemberSchema = z
   .object({
     bioguideId: z.string(),
-    directOrderName: z.string().nullable().optional(),
-    firstName: z.string().nullable().optional(),
-    lastName: z.string().nullable().optional(),
-    partyName: z.string().nullable().optional(),
-    state: z.string().nullable().optional(),
-    terms: z
-      .object({
-        item: z.array(
-          z
-            .object({
-              chamber: z.string().nullable().optional(),
-              congress: z.number().int().nullable().optional(),
-              startYear: z.number().int().nullable().optional(),
-              endYear: z.number().int().nullable().optional(),
-            })
-            .passthrough(),
-        ),
-      })
-      .partial()
-      .nullable()
-      .optional(),
+    firstName: z.string().optional(),
+    lastName: z.string().optional(),
+    directOrderName: z.string().optional(),
+    invertedOrderName: z.string().optional(),
+    state: z.string().optional(),
+    currentMember: z.boolean().optional(),
+    birthYear: z.union([z.string(), z.number()]).optional(),
+    // Live API returns `terms` as a list, not an object with .item.
+    terms: z.array(MemberTermSchema).default([]),
+    partyHistory: z.array(PartyHistoryEntrySchema).default([]),
   })
   .passthrough();
 
 export type Member = z.infer<typeof MemberSchema>;
 
-const MemberResponseSchema = z.object({ member: MemberSchema });
+const MemberResponseSchema = z.object({
+  member: MemberSchema,
+}) as unknown as z.ZodType<{ member: Member }>;
 
 export async function getMember(client: CongressClient, bioguideId: string): Promise<Member> {
   const res = await client.get(`/member/${bioguideId}`, {}, MemberResponseSchema);
@@ -102,7 +170,7 @@ export async function getMember(client: CongressClient, bioguideId: string): Pro
 }
 
 // ---------------------------------------------------------------------------
-// Committee
+// Committee (by chamber + system code)
 // ---------------------------------------------------------------------------
 
 const CommitteeSchema = z
@@ -110,18 +178,19 @@ const CommitteeSchema = z
     systemCode: z.string(),
     name: z.string(),
     chamber: z.string(),
-    type: z.string().nullable().optional(),
-    parentCommittee: z
-      .object({ systemCode: z.string(), name: z.string() })
+    type: z.string().optional(),
+    parent: z
+      .object({ systemCode: z.string(), name: z.string().optional() })
       .passthrough()
-      .nullable()
       .optional(),
   })
   .passthrough();
 
 export type Committee = z.infer<typeof CommitteeSchema>;
 
-const CommitteeResponseSchema = z.object({ committee: CommitteeSchema });
+const CommitteeResponseSchema = z.object({
+  committee: CommitteeSchema,
+}) as unknown as z.ZodType<{ committee: Committee }>;
 
 export async function getCommittee(
   client: CongressClient,
@@ -137,14 +206,27 @@ export async function getCommittee(
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Helpers: human-browsable URLs
 // ---------------------------------------------------------------------------
 
-export function billHumanUrl(congress: number, type: string, num: string | number): string {
-  const slug = `${type.toLowerCase()}${num}`;
-  return `https://www.congress.gov/bill/${congress}th-congress/${slug.replace(/\d+/, "/" + num)}`;
+export function billHumanUrl(congress: number, type: string, number: string | number): string {
+  // congress.gov URLs use formats like "/bill/117th-congress/house-bill/4346"
+  const chamberSlug =
+    type.toUpperCase().startsWith("H") ? "house-bill" : "senate-bill";
+  return `https://www.congress.gov/bill/${congress}th-congress/${chamberSlug}/${number}`;
 }
 
 export function memberHumanUrl(bioguideId: string): string {
   return `https://bioguide.congress.gov/search/bio/${encodeURIComponent(bioguideId)}`;
+}
+
+/**
+ * Short human-readable sponsor line.
+ *   "Rep. Ryan, Tim [D-OH-13]"  →  "Ryan (D-OH)"
+ */
+export function sponsorShortLabel(s: { lastName?: string; party?: string; state?: string }): string {
+  const last = s.lastName ?? "?";
+  const party = s.party ?? "?";
+  const state = s.state ?? "?";
+  return `${last} (${party}-${state})`;
 }

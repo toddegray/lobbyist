@@ -8,6 +8,7 @@ import { resolveConfig } from "../core/config.ts";
 import { LdaClient } from "../core/lda-client.ts";
 import { OpenFecClient } from "../core/openfec-client.ts";
 import { UsaSpendingClient } from "../core/usaspending-client.ts";
+import { CongressClient } from "../core/congress-client.ts";
 import { openDb } from "../db/engine.ts";
 import { runAsk } from "../agents/ask.ts";
 import { getFirstPositional, getIntFlag } from "./_shared.ts";
@@ -45,10 +46,17 @@ export async function runAskCli(args: string[]): Promise<number> {
     cacheDir: cfg.cache_dir,
     rateLimitRps: 2,
   });
+  const congress = cfg.resolved_congress_key
+    ? new CongressClient({
+        apiKey: cfg.resolved_congress_key,
+        cacheDir: cfg.cache_dir,
+        rateLimitRps: 1,
+      })
+    : null;
   const db = await openDb({ dataDir: cfg.data_dir });
   try {
     const res = await runAsk(
-      { cfg, lda, openfec, usaspending, db },
+      { cfg, lda, openfec, usaspending, congress, db },
       { question, maxIterations: maxIter, verbose },
     );
     process.stdout.write(res.answer + "\n");
